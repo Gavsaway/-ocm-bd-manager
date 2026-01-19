@@ -441,8 +441,8 @@
                 <div class="app-title" id="appTitle">📊 OCM Business Development Manager</div>
                 <div style="font-size: 12px; color: #666; margin-top: 5px;">
                     <span style="display: inline-flex; align-items: center; gap: 5px;">
-                        <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block;"></span>
-                        <span id="teamModeLabel">Team Mode - Shared Data</span>
+                        <span id="storageIndicator" style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block;"></span>
+                        <span id="teamModeLabel">Loading...</span>
                     </span>
                 </div>
             </div>
@@ -485,6 +485,7 @@
                 <button class="tab active" onclick="switchTab('opportunities')" id="tabOpportunities">Opportunities</button>
                 <button class="tab" onclick="switchTab('clients')" id="tabClients">Clients</button>
                 <button class="tab" onclick="switchTab('activities')" id="tabActivities">Activities</button>
+                <button class="tab" onclick="switchTab('commissions')" id="tabCommissions">Commissions</button>
             </div>
 
             <!-- Opportunities Section -->
@@ -559,6 +560,45 @@
                     </table>
                 </div>
             </div>
+
+            <!-- Commissions Section -->
+            <div id="commissionsSection" class="section hidden">
+                <div class="section-header">
+                    <h2 class="section-title" id="commissionsTitle">Commission Tracking</h2>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <select id="commissionYear" onchange="renderCommissions()" style="padding: 8px; border: 2px solid #e0e0e0; border-radius: 6px;">
+                        </select>
+                        <button class="btn btn-small" onclick="exportCommissions()" id="exportCommBtn">Export</button>
+                    </div>
+                </div>
+                
+                <!-- Monthly Summary -->
+                <div style="margin-bottom: 30px;">
+                    <h3 style="color: #667eea; margin-bottom: 15px;" id="monthlySummaryTitle">Monthly Revenue Summary</h3>
+                    <div id="monthlyGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    </div>
+                </div>
+
+                <!-- Detailed Won Deals -->
+                <div>
+                    <h3 style="color: #667eea; margin-bottom: 15px;" id="wonDealsTitle">Won Deals Detail</h3>
+                    <div class="table-container">
+                        <table id="commissionsTable">
+                            <thead>
+                                <tr>
+                                    <th id="thWonDate">Won Date</th>
+                                    <th id="thWonCompany">Company</th>
+                                    <th id="thWonTitle">Deal</th>
+                                    <th id="thWonValue">Value</th>
+                                    <th id="thWonMonth">Month</th>
+                                </tr>
+                            </thead>
+                            <tbody id="commissionsBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -584,7 +624,7 @@
                     </div>
                     <div class="form-group">
                         <label id="labelOppStage">Stage</label>
-                        <select id="oppStage" required>
+                        <select id="oppStage" required onchange="toggleWonDateField()">
                             <option value="new">New Lead</option>
                             <option value="qualified">Qualified</option>
                             <option value="proposal">Proposal Sent</option>
@@ -600,6 +640,10 @@
                     <div class="form-group">
                         <label id="labelOppCloseDate">Expected Close Date</label>
                         <input type="date" id="oppCloseDate" required>
+                    </div>
+                    <div class="form-group" id="wonDateGroup" style="display: none;">
+                        <label id="labelOppWonDate">Actual Won Date</label>
+                        <input type="date" id="oppWonDate">
                     </div>
                 </div>
                 <div class="form-group">
@@ -779,62 +823,91 @@
             }
         }
 
-        // Data Storage - Shared across all team members
+        // Data Storage - Hybrid: Cloud storage with localStorage fallback
         let opportunities = [];
         let clients = [];
         let activities = [];
         let dataLoaded = false;
+        let useCloudStorage = false;
 
-        // Load data from shared persistent storage
+        // Check if cloud storage is available
+        function isCloudStorageAvailable() {
+            return typeof window.storage !== 'undefined' && window.storage !== null;
+        }
+
+        // Load data from storage (cloud or local)
         async function loadAllData() {
-            try {
-                // Load opportunities
-                const oppsData = await window.storage.get('ocm-opportunities', true);
-                opportunities = oppsData ? JSON.parse(oppsData.value) : [];
-                
-                // Load clients
-                const clientsData = await window.storage.get('ocm-clients', true);
-                clients = clientsData ? JSON.parse(clientsData.value) : [];
-                
-                // Load activities
-                const activitiesData = await window.storage.get('ocm-activities', true);
-                activities = activitiesData ? JSON.parse(activitiesData.value) : [];
-                
-                dataLoaded = true;
-            } catch (error) {
-                console.log('No existing data found or error loading, starting fresh');
-                opportunities = [];
-                clients = [];
-                activities = [];
-                dataLoaded = true;
+            useCloudStorage = isCloudStorageAvailable();
+            
+            if (useCloudStorage) {
+                try {
+                    const oppsData = await window.storage.get('ocm-opportunities', true);
+                    opportunities = oppsData ? JSON.parse(oppsData.value) : [];
+                    
+                    const clientsData = await window.storage.get('ocm-clients', true);
+                    clients = clientsData ? JSON.parse(clientsData.value) : [];
+                    
+                    const activitiesData = await window.storage.get('ocm-activities', true);
+                    activities = activitiesData ? JSON.parse(activitiesData.value) : [];
+                    
+                    dataLoaded = true;
+                    console.log('Using cloud storage (Team Mode)');
+                } catch (error) {
+                    console.log('Cloud storage error, falling back to localStorage');
+                    useCloudStorage = false;
+                    loadFromLocalStorage();
+                }
+            } else {
+                loadFromLocalStorage();
             }
         }
 
-        // Save data to shared persistent storage
+        // Fallback: Load from localStorage
+        function loadFromLocalStorage() {
+            opportunities = JSON.parse(localStorage.getItem('opportunities')) || [];
+            clients = JSON.parse(localStorage.getItem('clients')) || [];
+            activities = JSON.parse(localStorage.getItem('activities')) || [];
+            dataLoaded = true;
+            console.log('Using localStorage (Solo Mode)');
+        }
+
+        // Save data to storage (cloud or local)
         async function saveOpportunitiesData() {
-            try {
-                await window.storage.set('ocm-opportunities', JSON.stringify(opportunities), true);
-            } catch (error) {
-                console.error('Error saving opportunities:', error);
-                alert('Error saving data. Please try again.');
+            if (useCloudStorage) {
+                try {
+                    await window.storage.set('ocm-opportunities', JSON.stringify(opportunities), true);
+                } catch (error) {
+                    console.log('Cloud storage failed, using localStorage');
+                    localStorage.setItem('opportunities', JSON.stringify(opportunities));
+                }
+            } else {
+                localStorage.setItem('opportunities', JSON.stringify(opportunities));
             }
         }
 
         async function saveClientsData() {
-            try {
-                await window.storage.set('ocm-clients', JSON.stringify(clients), true);
-            } catch (error) {
-                console.error('Error saving clients:', error);
-                alert('Error saving data. Please try again.');
+            if (useCloudStorage) {
+                try {
+                    await window.storage.set('ocm-clients', JSON.stringify(clients), true);
+                } catch (error) {
+                    console.log('Cloud storage failed, using localStorage');
+                    localStorage.setItem('clients', JSON.stringify(clients));
+                }
+            } else {
+                localStorage.setItem('clients', JSON.stringify(clients));
             }
         }
 
         async function saveActivitiesData() {
-            try {
-                await window.storage.set('ocm-activities', JSON.stringify(activities), true);
-            } catch (error) {
-                console.error('Error saving activities:', error);
-                alert('Error saving data. Please try again.');
+            if (useCloudStorage) {
+                try {
+                    await window.storage.set('ocm-activities', JSON.stringify(activities), true);
+                } catch (error) {
+                    console.log('Cloud storage failed, using localStorage');
+                    localStorage.setItem('activities', JSON.stringify(activities));
+                }
+            } else {
+                localStorage.setItem('activities', JSON.stringify(activities));
             }
         }
 
@@ -855,6 +928,7 @@
                 tabOpportunities: 'Opportunities',
                 tabClients: 'Clients',
                 tabActivities: 'Activities',
+                tabCommissions: 'Commissions',
                 oppTitle: 'Sales Pipeline',
                 addOppBtn: '+ Add Opportunity',
                 clientsTitle: 'Client Database',
@@ -887,6 +961,7 @@
                 labelOppStage: 'Stage',
                 labelOppProbability: 'Win Probability (%)',
                 labelOppCloseDate: 'Expected Close Date',
+                labelOppWonDate: 'Actual Won Date',
                 labelOppNotes: 'Notes',
                 saveOppBtn: 'Save Opportunity',
                 clientModalTitle: 'Add New Client',
@@ -909,7 +984,16 @@
                 labelCurrentPass: 'Current Password',
                 labelNewPass: 'New Password',
                 labelConfirmPass: 'Confirm New Password',
-                changePasswordBtn: 'Change Password'
+                changePasswordBtn: 'Change Password',
+                commissionsTitle: 'Commission Tracking',
+                exportCommBtn: 'Export',
+                monthlySummaryTitle: 'Monthly Revenue Summary',
+                wonDealsTitle: 'Won Deals Detail',
+                thWonDate: 'Won Date',
+                thWonCompany: 'Company',
+                thWonTitle: 'Deal',
+                thWonValue: 'Value',
+                thWonMonth: 'Month'
             },
             ja: {
                 appTitle: '📊 OCM 事業開発管理システム',
@@ -926,6 +1010,7 @@
                 tabOpportunities: '営業案件',
                 tabClients: '顧客',
                 tabActivities: '活動記録',
+                tabCommissions: 'コミッション',
                 oppTitle: 'セールスパイプライン',
                 addOppBtn: '+ 案件を追加',
                 clientsTitle: '顧客データベース',
@@ -958,6 +1043,7 @@
                 labelOppStage: 'ステージ',
                 labelOppProbability: '受注確度 (%)',
                 labelOppCloseDate: '完了予定日',
+                labelOppWonDate: '受注日',
                 labelOppNotes: '備考',
                 saveOppBtn: '案件を保存',
                 clientModalTitle: '新規顧客追加',
@@ -980,7 +1066,16 @@
                 labelCurrentPass: '現在のパスワード',
                 labelNewPass: '新しいパスワード',
                 labelConfirmPass: '新しいパスワード（確認）',
-                changePasswordBtn: 'パスワードを変更'
+                changePasswordBtn: 'パスワードを変更',
+                commissionsTitle: 'コミッション管理',
+                exportCommBtn: 'エクスポート',
+                monthlySummaryTitle: '月次売上サマリー',
+                wonDealsTitle: '受注案件詳細',
+                thWonDate: '受注日',
+                thWonCompany: '企業名',
+                thWonTitle: '案件名',
+                thWonValue: '金額',
+                thWonMonth: '月'
             }
         };
 
@@ -991,10 +1086,21 @@
                 document.getElementById('mainApp').classList.remove('hidden');
                 
                 // Show loading message
-                document.getElementById('opportunitiesBody').innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">Loading shared data...</td></tr>';
+                document.getElementById('opportunitiesBody').innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">Loading data...</td></tr>';
                 
-                // Load shared data
+                // Load data
                 await loadAllData();
+                
+                // Update storage mode indicator
+                const indicator = document.getElementById('storageIndicator');
+                const label = document.getElementById('teamModeLabel');
+                if (useCloudStorage) {
+                    indicator.style.background = '#10b981';
+                    label.textContent = currentLanguage === 'en' ? 'Team Mode - Shared Data' : 'チームモード - データ共有中';
+                } else {
+                    indicator.style.background = '#f59e0b';
+                    label.textContent = currentLanguage === 'en' ? 'Solo Mode - Local Storage' : 'ソロモード - ローカル保存';
+                }
                 
                 // Set currency button state
                 document.querySelectorAll('.currency-btn').forEach(btn => btn.classList.remove('active'));
@@ -1067,6 +1173,10 @@
             } else if (tabName === 'activities') {
                 document.getElementById('tabActivities').classList.add('active');
                 document.getElementById('activitiesSection').classList.remove('hidden');
+            } else if (tabName === 'commissions') {
+                document.getElementById('tabCommissions').classList.add('active');
+                document.getElementById('commissionsSection').classList.remove('hidden');
+                renderCommissions();
             }
         }
 
@@ -1075,7 +1185,27 @@
             document.getElementById('opportunityModalTitle').textContent = currentLanguage === 'en' ? 'Add New Opportunity' : '新規案件追加';
             document.getElementById('opportunityForm').reset();
             document.getElementById('oppId').value = '';
+            document.getElementById('wonDateGroup').style.display = 'none';
             document.getElementById('opportunityModal').style.display = 'block';
+        }
+
+        function toggleWonDateField() {
+            const stage = document.getElementById('oppStage').value;
+            const wonDateGroup = document.getElementById('wonDateGroup');
+            const wonDateInput = document.getElementById('oppWonDate');
+            
+            if (stage === 'won') {
+                wonDateGroup.style.display = 'block';
+                wonDateInput.required = true;
+                // Set default to today if empty
+                if (!wonDateInput.value) {
+                    wonDateInput.valueAsDate = new Date();
+                }
+            } else {
+                wonDateGroup.style.display = 'none';
+                wonDateInput.required = false;
+                wonDateInput.value = '';
+            }
         }
 
         function showAddClientModal() {
@@ -1107,15 +1237,18 @@
         async function saveOpportunity(event) {
             event.preventDefault();
             const id = document.getElementById('oppId').value;
+            const stage = document.getElementById('oppStage').value;
+            
             const opportunity = {
                 id: id || Date.now().toString(),
                 company: document.getElementById('oppCompany').value,
                 title: document.getElementById('oppTitle').value,
                 value: parseFloat(document.getElementById('oppValue').value),
-                stage: document.getElementById('oppStage').value,
+                stage: stage,
                 probability: parseInt(document.getElementById('oppProbability').value),
                 closeDate: document.getElementById('oppCloseDate').value,
                 notes: document.getElementById('oppNotes').value,
+                wonDate: stage === 'won' ? document.getElementById('oppWonDate').value : null,
                 createdAt: id ? opportunities.find(o => o.id === id).createdAt : new Date().toISOString()
             };
 
@@ -1296,6 +1429,18 @@
                 document.getElementById('oppProbability').value = opp.probability;
                 document.getElementById('oppCloseDate').value = opp.closeDate;
                 document.getElementById('oppNotes').value = opp.notes;
+                
+                // Handle won date
+                if (opp.stage === 'won') {
+                    document.getElementById('wonDateGroup').style.display = 'block';
+                    document.getElementById('oppWonDate').value = opp.wonDate || '';
+                    document.getElementById('oppWonDate').required = true;
+                } else {
+                    document.getElementById('wonDateGroup').style.display = 'none';
+                    document.getElementById('oppWonDate').value = '';
+                    document.getElementById('oppWonDate').required = false;
+                }
+                
                 document.getElementById('opportunityModalTitle').textContent = currentLanguage === 'en' ? 'Edit Opportunity' : '案件を編集';
                 document.getElementById('opportunityModal').style.display = 'block';
             }
@@ -1341,6 +1486,122 @@
                 await saveActivitiesData();
                 renderActivities();
             }
+        }
+
+        // Commission Tracking Functions
+        function renderCommissions() {
+            // Get won opportunities
+            const wonOpps = opportunities.filter(o => o.stage === 'won' && o.wonDate);
+            
+            // Populate year selector
+            const years = [...new Set(wonOpps.map(o => new Date(o.wonDate).getFullYear()))];
+            years.sort((a, b) => b - a);
+            if (years.length === 0) years.push(new Date().getFullYear());
+            
+            const yearSelect = document.getElementById('commissionYear');
+            const currentYear = yearSelect.value || years[0];
+            yearSelect.innerHTML = years.map(y => `<option value="${y}" ${y == currentYear ? 'selected' : ''}>${y}</option>`).join('');
+            
+            // Filter by selected year
+            const yearOpps = wonOpps.filter(o => new Date(o.wonDate).getFullYear() == currentYear);
+            
+            // Calculate monthly totals
+            const monthlyData = {};
+            for (let i = 0; i < 12; i++) {
+                monthlyData[i] = { total: 0, count: 0, deals: [] };
+            }
+            
+            yearOpps.forEach(opp => {
+                const month = new Date(opp.wonDate).getMonth();
+                monthlyData[month].total += opp.value;
+                monthlyData[month].count++;
+                monthlyData[month].deals.push(opp);
+            });
+            
+            // Render monthly grid
+            const monthNames = currentLanguage === 'en' 
+                ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                : ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+            
+            const monthlyGrid = document.getElementById('monthlyGrid');
+            monthlyGrid.innerHTML = monthNames.map((name, i) => `
+                <div style="background: ${monthlyData[i].count > 0 ? '#f0f9ff' : '#f9fafb'}; padding: 15px; border-radius: 8px; border: 2px solid ${monthlyData[i].count > 0 ? '#0ea5e9' : '#e5e7eb'};">
+                    <div style="font-weight: 600; color: #0ea5e9; margin-bottom: 5px;">${name}</div>
+                    <div style="font-size: 20px; font-weight: 700; color: #333; margin-bottom: 5px;">${formatCurrency(monthlyData[i].total)}</div>
+                    <div style="font-size: 12px; color: #666;">${monthlyData[i].count} ${currentLanguage === 'en' ? 'deals' : '件'}</div>
+                </div>
+            `).join('');
+            
+            // Render detailed table
+            const tbody = document.getElementById('commissionsBody');
+            tbody.innerHTML = '';
+            
+            // Sort by date (most recent first)
+            const sortedOpps = [...yearOpps].sort((a, b) => new Date(b.wonDate) - new Date(a.wonDate));
+            
+            sortedOpps.forEach(opp => {
+                const row = tbody.insertRow();
+                const wonDate = new Date(opp.wonDate);
+                const monthName = monthNames[wonDate.getMonth()];
+                
+                row.innerHTML = `
+                    <td>${opp.wonDate}</td>
+                    <td>${opp.company}</td>
+                    <td>${opp.title}</td>
+                    <td><strong>${formatCurrency(opp.value)}</strong></td>
+                    <td><span style="background: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">${monthName} ${wonDate.getFullYear()}</span></td>
+                `;
+            });
+            
+            // Show empty state if no won deals
+            if (sortedOpps.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 40px; color: #999;">
+                    ${currentLanguage === 'en' ? 'No won deals in ' + currentYear : currentYear + '年に受注案件がありません'}
+                </td></tr>`;
+            }
+        }
+
+        function exportCommissions() {
+            const year = document.getElementById('commissionYear').value;
+            const wonOpps = opportunities.filter(o => 
+                o.stage === 'won' && 
+                o.wonDate && 
+                new Date(o.wonDate).getFullYear() == year
+            ).sort((a, b) => new Date(a.wonDate) - new Date(b.wonDate));
+            
+            if (wonOpps.length === 0) {
+                alert(currentLanguage === 'en' ? 'No data to export' : 'エクスポートするデータがありません');
+                return;
+            }
+            
+            // Create CSV content
+            const headers = currentLanguage === 'en' 
+                ? ['Won Date', 'Company', 'Deal', 'Value', 'Month']
+                : ['受注日', '企業名', '案件名', '金額', '月'];
+            
+            const rows = wonOpps.map(opp => {
+                const wonDate = new Date(opp.wonDate);
+                const month = wonDate.toLocaleString(currentLanguage === 'en' ? 'en-US' : 'ja-JP', { month: 'short', year: 'numeric' });
+                return [
+                    opp.wonDate,
+                    opp.company,
+                    opp.title,
+                    opp.value,
+                    month
+                ];
+            });
+            
+            const csvContent = [
+                headers.join(','),
+                ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+            ].join('\n');
+            
+            // Download
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `commissions_${year}.csv`;
+            link.click();
         }
 
         // Initialize on load
