@@ -895,26 +895,6 @@
             } else {
                 loadFromLocalStorage();
             }
-            
-            // Auto-fix old data without titles
-            migrateOldData();
-        }
-        
-        // Migrate old data to add missing titles
-        async function migrateOldData() {
-            let updated = false;
-            
-            opportunities.forEach(opp => {
-                if (!opp.title || opp.title === 'undefined') {
-                    opp.title = opp.company ? `${opp.company} Project` : 'Untitled Opportunity';
-                    updated = true;
-                }
-            });
-            
-            if (updated) {
-                await saveOpportunitiesData();
-                console.log('✅ Migrated old opportunities to add missing titles');
-            }
         }
 
         // Fallback: Load from localStorage
@@ -1497,12 +1477,12 @@
             const opp = opportunities.find(o => o.id === id);
             if (opp) {
                 document.getElementById('oppId').value = opp.id;
-                document.getElementById('oppCompany').value = opp.company;
-                document.getElementById('oppTitle').value = opp.title || opp.company + ' Project'; // Auto-fill if missing
-                document.getElementById('oppValue').value = opp.value;
+                document.getElementById('oppCompany').value = opp.company || '';
+                document.getElementById('oppTitle').value = opp.title || '';
+                document.getElementById('oppValue').value = opp.value || 0;
                 document.getElementById('oppStage').value = opp.stage;
-                document.getElementById('oppProbability').value = opp.probability;
-                document.getElementById('oppCloseDate').value = opp.closeDate;
+                document.getElementById('oppProbability').value = opp.probability || 50;
+                document.getElementById('oppCloseDate').value = opp.closeDate || '';
                 document.getElementById('oppNotes').value = opp.notes || '';
                 
                 // Handle won date
