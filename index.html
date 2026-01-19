@@ -565,7 +565,13 @@
             <div id="commissionsSection" class="section hidden">
                 <div class="section-header">
                     <h2 class="section-title" id="commissionsTitle">Commission Tracking</h2>
-                    <div style="display: flex; gap: 10px; align-items: center;">
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label for="commissionRate" style="font-size: 14px; font-weight: 600; color: #667eea;" id="commRateLabel">Commission %:</label>
+                            <input type="number" id="commissionRate" value="10" min="0" max="100" step="0.5" 
+                                   style="width: 70px; padding: 8px; border: 2px solid #667eea; border-radius: 6px; font-weight: 600;"
+                                   onchange="saveCommissionRate(); renderCommissions();">
+                        </div>
                         <select id="commissionYear" onchange="renderCommissions()" style="padding: 8px; border: 2px solid #e0e0e0; border-radius: 6px;">
                         </select>
                         <button class="btn btn-small" onclick="exportCommissions()" id="exportCommBtn">Export</button>
@@ -590,6 +596,7 @@
                                     <th id="thWonCompany">Company</th>
                                     <th id="thWonTitle">Deal</th>
                                     <th id="thWonValue">Value</th>
+                                    <th id="thWonCommission">Commission</th>
                                     <th id="thWonMonth">Month</th>
                                 </tr>
                             </thead>
@@ -986,6 +993,7 @@
                 labelConfirmPass: 'Confirm New Password',
                 changePasswordBtn: 'Change Password',
                 commissionsTitle: 'Commission Tracking',
+                commRateLabel: 'Commission %:',
                 exportCommBtn: 'Export',
                 monthlySummaryTitle: 'Monthly Revenue Summary',
                 wonDealsTitle: 'Won Deals Detail',
@@ -993,6 +1001,7 @@
                 thWonCompany: 'Company',
                 thWonTitle: 'Deal',
                 thWonValue: 'Value',
+                thWonCommission: 'Commission',
                 thWonMonth: 'Month'
             },
             ja: {
@@ -1068,6 +1077,7 @@
                 labelConfirmPass: '新しいパスワード（確認）',
                 changePasswordBtn: 'パスワードを変更',
                 commissionsTitle: 'コミッション管理',
+                commRateLabel: 'コミッション率 %:',
                 exportCommBtn: 'エクスポート',
                 monthlySummaryTitle: '月次売上サマリー',
                 wonDealsTitle: '受注案件詳細',
@@ -1075,6 +1085,7 @@
                 thWonCompany: '企業名',
                 thWonTitle: '案件名',
                 thWonValue: '金額',
+                thWonCommission: 'コミッション',
                 thWonMonth: '月'
             }
         };
@@ -1352,12 +1363,12 @@
             opportunities.forEach(opp => {
                 const row = tbody.insertRow();
                 row.innerHTML = `
-                    <td>${opp.company}</td>
-                    <td>${opp.title}</td>
-                    <td>${formatCurrency(opp.value)}</td>
+                    <td>${opp.company || ''}</td>
+                    <td>${opp.title || 'N/A'}</td>
+                    <td>${formatCurrency(opp.value || 0)}</td>
                     <td><span class="status-badge status-${opp.stage}">${opp.stage}</span></td>
-                    <td>${opp.probability}%</td>
-                    <td>${opp.closeDate}</td>
+                    <td>${opp.probability || 0}%</td>
+                    <td>${opp.closeDate || ''}</td>
                     <td class="action-buttons">
                         <button class="btn-icon" onclick="editOpportunity('${opp.id}')">✏️</button>
                         <button class="btn-icon" onclick="deleteOpportunity('${opp.id}')">🗑️</button>
@@ -1489,7 +1500,23 @@
         }
 
         // Commission Tracking Functions
+        function saveCommissionRate() {
+            const rate = document.getElementById('commissionRate').value;
+            localStorage.setItem('commissionRate', rate);
+        }
+
+        function loadCommissionRate() {
+            const savedRate = localStorage.getItem('commissionRate');
+            if (savedRate) {
+                document.getElementById('commissionRate').value = savedRate;
+            }
+        }
+
         function renderCommissions() {
+            // Load saved commission rate
+            loadCommissionRate();
+            const commRate = parseFloat(document.getElementById('commissionRate').value) / 100;
+            
             // Get won opportunities
             const wonOpps = opportunities.filter(o => o.stage === 'won' && o.wonDate);
             
@@ -1508,15 +1535,25 @@
             // Calculate monthly totals
             const monthlyData = {};
             for (let i = 0; i < 12; i++) {
-                monthlyData[i] = { total: 0, count: 0, deals: [] };
+                monthlyData[i] = { total: 0, commission: 0, count: 0, deals: [] };
             }
             
             yearOpps.forEach(opp => {
                 const month = new Date(opp.wonDate).getMonth();
-                monthlyData[month].total += opp.value;
+                const value = opp.value || 0;
+                monthlyData[month].total += value;
+                monthlyData[month].commission += value * commRate;
                 monthlyData[month].count++;
                 monthlyData[month].deals.push(opp);
             });
+            
+            // Calculate yearly totals
+            let yearTotal = 0;
+            let yearCommission = 0;
+            for (let i = 0; i < 12; i++) {
+                yearTotal += monthlyData[i].total;
+                yearCommission += monthlyData[i].commission;
+            }
             
             // Render monthly grid
             const monthNames = currentLanguage === 'en' 
@@ -1527,10 +1564,45 @@
             monthlyGrid.innerHTML = monthNames.map((name, i) => `
                 <div style="background: ${monthlyData[i].count > 0 ? '#f0f9ff' : '#f9fafb'}; padding: 15px; border-radius: 8px; border: 2px solid ${monthlyData[i].count > 0 ? '#0ea5e9' : '#e5e7eb'};">
                     <div style="font-weight: 600; color: #0ea5e9; margin-bottom: 5px;">${name}</div>
-                    <div style="font-size: 20px; font-weight: 700; color: #333; margin-bottom: 5px;">${formatCurrency(monthlyData[i].total)}</div>
+                    <div style="font-size: 18px; font-weight: 700; color: #333; margin-bottom: 3px;">${formatCurrency(monthlyData[i].total)}</div>
+                    <div style="font-size: 16px; font-weight: 600; color: #10b981; margin-bottom: 5px;">${formatCurrency(monthlyData[i].commission)}</div>
                     <div style="font-size: 12px; color: #666;">${monthlyData[i].count} ${currentLanguage === 'en' ? 'deals' : '件'}</div>
                 </div>
             `).join('');
+            
+            // Add year total summary at the top
+            const summaryHtml = `
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                        <div>
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 5px;">${currentLanguage === 'en' ? 'Total Revenue' : '総売上'}</div>
+                            <div style="font-size: 28px; font-weight: 700;">${formatCurrency(yearTotal)}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 5px;">${currentLanguage === 'en' ? 'Total Commission' : '総コミッション'}</div>
+                            <div style="font-size: 28px; font-weight: 700;">${formatCurrency(yearCommission)}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 5px;">${currentLanguage === 'en' ? 'Commission Rate' : 'コミッション率'}</div>
+                            <div style="font-size: 28px; font-weight: 700;">${(commRate * 100).toFixed(1)}%</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 5px;">${currentLanguage === 'en' ? 'Deals Won' : '受注件数'}</div>
+                            <div style="font-size: 28px; font-weight: 700;">${yearOpps.length}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Insert summary before monthly grid
+            const commissionsSection = document.getElementById('commissionsSection');
+            let summaryDiv = document.getElementById('yearSummary');
+            if (!summaryDiv) {
+                summaryDiv = document.createElement('div');
+                summaryDiv.id = 'yearSummary';
+                commissionsSection.querySelector('div[style*="margin-bottom: 30px"]').insertAdjacentElement('beforebegin', summaryDiv);
+            }
+            summaryDiv.innerHTML = summaryHtml;
             
             // Render detailed table
             const tbody = document.getElementById('commissionsBody');
@@ -1543,19 +1615,22 @@
                 const row = tbody.insertRow();
                 const wonDate = new Date(opp.wonDate);
                 const monthName = monthNames[wonDate.getMonth()];
+                const value = opp.value || 0;
+                const commission = value * commRate;
                 
                 row.innerHTML = `
                     <td>${opp.wonDate}</td>
                     <td>${opp.company}</td>
-                    <td>${opp.title}</td>
-                    <td><strong>${formatCurrency(opp.value)}</strong></td>
+                    <td>${opp.title || 'N/A'}</td>
+                    <td><strong>${formatCurrency(value)}</strong></td>
+                    <td><strong style="color: #10b981;">${formatCurrency(commission)}</strong></td>
                     <td><span style="background: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">${monthName} ${wonDate.getFullYear()}</span></td>
                 `;
             });
             
             // Show empty state if no won deals
             if (sortedOpps.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 40px; color: #999;">
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 40px; color: #999;">
                     ${currentLanguage === 'en' ? 'No won deals in ' + currentYear : currentYear + '年に受注案件がありません'}
                 </td></tr>`;
             }
@@ -1563,6 +1638,7 @@
 
         function exportCommissions() {
             const year = document.getElementById('commissionYear').value;
+            const commRate = parseFloat(document.getElementById('commissionRate').value) / 100;
             const wonOpps = opportunities.filter(o => 
                 o.stage === 'won' && 
                 o.wonDate && 
@@ -1576,20 +1652,42 @@
             
             // Create CSV content
             const headers = currentLanguage === 'en' 
-                ? ['Won Date', 'Company', 'Deal', 'Value', 'Month']
-                : ['受注日', '企業名', '案件名', '金額', '月'];
+                ? ['Won Date', 'Company', 'Deal', 'Value', 'Commission', 'Commission %', 'Month']
+                : ['受注日', '企業名', '案件名', '金額', 'コミッション', 'コミッション率', '月'];
+            
+            let totalValue = 0;
+            let totalCommission = 0;
             
             const rows = wonOpps.map(opp => {
                 const wonDate = new Date(opp.wonDate);
                 const month = wonDate.toLocaleString(currentLanguage === 'en' ? 'en-US' : 'ja-JP', { month: 'short', year: 'numeric' });
+                const value = opp.value || 0;
+                const commission = value * commRate;
+                totalValue += value;
+                totalCommission += commission;
+                
                 return [
                     opp.wonDate,
                     opp.company,
-                    opp.title,
-                    opp.value,
+                    opp.title || 'N/A',
+                    value,
+                    commission.toFixed(2),
+                    (commRate * 100).toFixed(1) + '%',
                     month
                 ];
             });
+            
+            // Add summary row
+            rows.push([]);
+            rows.push([
+                currentLanguage === 'en' ? 'TOTAL' : '合計',
+                '',
+                '',
+                totalValue,
+                totalCommission.toFixed(2),
+                (commRate * 100).toFixed(1) + '%',
+                ''
+            ]);
             
             const csvContent = [
                 headers.join(','),
