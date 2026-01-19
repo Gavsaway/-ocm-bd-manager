@@ -453,6 +453,8 @@
                     <button class="currency-btn" onclick="changeCurrency('EUR')" id="currencyEUR">€ EUR</button>
                 </div>
                 <button class="lang-switch" onclick="toggleLanguage()" id="langBtn">日本語</button>
+                <button class="btn btn-small" onclick="backupData()" id="backupBtn" style="background: #10b981;">💾 Backup</button>
+                <button class="btn btn-small" onclick="showRestoreModal()" id="restoreBtn" style="background: #f59e0b;">📂 Restore</button>
                 <button class="btn btn-small" onclick="showPasswordModal()" id="changePassBtn">Change Password</button>
                 <button class="btn btn-small btn-secondary" onclick="logout()" id="logoutBtn">Logout</button>
             </div>
@@ -776,6 +778,32 @@
         </div>
     </div>
 
+    <!-- Restore Data Modal -->
+    <div id="restoreModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal('restoreModal')">&times;</span>
+            <h2 id="restoreModalTitle">Restore Data from Backup</h2>
+            <div style="margin-bottom: 20px;">
+                <p id="restoreInstructions" style="color: #666; margin-bottom: 15px;">
+                    Select a backup file to restore your opportunities, clients, and activities.
+                </p>
+                <div style="background: #fff3cd; border: 2px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <strong style="color: #856404;">⚠️ Warning:</strong>
+                    <span style="color: #856404;" id="restoreWarning">This will replace all current data with the backup file.</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label id="labelBackupFile">Select Backup File (.json)</label>
+                <input type="file" id="backupFile" accept=".json" style="padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; width: 100%;">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" onclick="restoreData()" id="restoreDataBtn">Restore Data</button>
+                <button class="btn btn-secondary" onclick="closeModal('restoreModal')" id="cancelRestoreBtn">Cancel</button>
+            </div>
+            <p class="error hidden" id="restoreError">Error restoring data</p>
+        </div>
+    </div>
+
     <script>
         // Application State
         let currentLanguage = 'en';
@@ -992,6 +1020,14 @@
                 labelNewPass: 'New Password',
                 labelConfirmPass: 'Confirm New Password',
                 changePasswordBtn: 'Change Password',
+                backupBtn: '💾 Backup',
+                restoreBtn: '📂 Restore',
+                restoreModalTitle: 'Restore Data from Backup',
+                restoreInstructions: 'Select a backup file to restore your opportunities, clients, and activities.',
+                restoreWarning: 'This will replace all current data with the backup file.',
+                labelBackupFile: 'Select Backup File (.json)',
+                restoreDataBtn: 'Restore Data',
+                cancelRestoreBtn: 'Cancel',
                 commissionsTitle: 'Commission Tracking',
                 commRateLabel: 'Commission %:',
                 exportCommBtn: 'Export',
@@ -1076,6 +1112,14 @@
                 labelNewPass: '新しいパスワード',
                 labelConfirmPass: '新しいパスワード（確認）',
                 changePasswordBtn: 'パスワードを変更',
+                backupBtn: '💾 バックアップ',
+                restoreBtn: '📂 復元',
+                restoreModalTitle: 'バックアップからデータ復元',
+                restoreInstructions: 'バックアップファイルを選択して、案件、顧客、活動データを復元します。',
+                restoreWarning: '現在のすべてのデータがバックアップファイルの内容に置き換えられます。',
+                labelBackupFile: 'バックアップファイルを選択 (.json)',
+                restoreDataBtn: 'データを復元',
+                cancelRestoreBtn: 'キャンセル',
                 commissionsTitle: 'コミッション管理',
                 commRateLabel: 'コミッション率 %:',
                 exportCommBtn: 'エクスポート',
@@ -1700,6 +1744,125 @@
             link.href = URL.createObjectURL(blob);
             link.download = `commissions_${year}.csv`;
             link.click();
+        }
+
+        // Data Backup and Restore Functions
+        function backupData() {
+            const backupData = {
+                version: '2.1',
+                exportDate: new Date().toISOString(),
+                opportunities: opportunities,
+                clients: clients,
+                activities: activities,
+                settings: {
+                    commissionRate: document.getElementById('commissionRate')?.value || '10',
+                    currency: currentCurrency,
+                    language: currentLanguage
+                }
+            };
+            
+            const dataStr = JSON.stringify(backupData, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            const timestamp = new Date().toISOString().split('T')[0];
+            link.download = `ocm-bd-backup-${timestamp}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            alert(currentLanguage === 'en' 
+                ? `✅ Backup saved!\n\nFile: ocm-bd-backup-${timestamp}.json\n\nOpportunities: ${opportunities.length}\nClients: ${clients.length}\nActivities: ${activities.length}` 
+                : `✅ バックアップ保存完了！\n\nファイル: ocm-bd-backup-${timestamp}.json\n\n案件: ${opportunities.length}件\n顧客: ${clients.length}件\n活動: ${activities.length}件`);
+        }
+        
+        function showRestoreModal() {
+            document.getElementById('backupFile').value = '';
+            document.getElementById('restoreError').classList.add('hidden');
+            document.getElementById('restoreModal').style.display = 'block';
+        }
+        
+        async function restoreData() {
+            const fileInput = document.getElementById('backupFile');
+            const errorElement = document.getElementById('restoreError');
+            
+            if (!fileInput.files || !fileInput.files[0]) {
+                errorElement.textContent = currentLanguage === 'en' ? 'Please select a backup file' : 'バックアップファイルを選択してください';
+                errorElement.classList.remove('hidden');
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            
+            try {
+                const text = await file.text();
+                const backupData = JSON.parse(text);
+                
+                // Validate backup structure
+                if (!backupData.opportunities || !backupData.clients || !backupData.activities) {
+                    throw new Error('Invalid backup file format');
+                }
+                
+                // Confirm restore
+                const confirmMsg = currentLanguage === 'en'
+                    ? `Restore data from backup?\n\nThis backup contains:\n- ${backupData.opportunities.length} opportunities\n- ${backupData.clients.length} clients\n- ${backupData.activities.length} activities\n\nCurrent data will be replaced!`
+                    : `バックアップからデータを復元しますか？\n\nバックアップ内容:\n- 案件: ${backupData.opportunities.length}件\n- 顧客: ${backupData.clients.length}件\n- 活動: ${backupData.activities.length}件\n\n現在のデータは置き換えられます！`;
+                
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+                
+                // Restore data
+                opportunities = backupData.opportunities;
+                clients = backupData.clients;
+                activities = backupData.activities;
+                
+                // Save to storage
+                await saveOpportunitiesData();
+                await saveClientsData();
+                await saveActivitiesData();
+                
+                // Restore settings if available
+                if (backupData.settings) {
+                    if (backupData.settings.commissionRate) {
+                        const commRateInput = document.getElementById('commissionRate');
+                        if (commRateInput) {
+                            commRateInput.value = backupData.settings.commissionRate;
+                            saveCommissionRate();
+                        }
+                    }
+                    if (backupData.settings.currency) {
+                        changeCurrency(backupData.settings.currency);
+                    }
+                    if (backupData.settings.language && backupData.settings.language !== currentLanguage) {
+                        toggleLanguage();
+                    }
+                }
+                
+                // Refresh all views
+                renderOpportunities();
+                renderClients();
+                renderActivities();
+                updateDashboard();
+                if (currentTab === 'commissions') {
+                    renderCommissions();
+                }
+                
+                closeModal('restoreModal');
+                
+                alert(currentLanguage === 'en' 
+                    ? '✅ Data restored successfully!\n\nAll data has been restored from backup.' 
+                    : '✅ データ復元完了！\n\nバックアップからすべてのデータが復元されました。');
+                
+            } catch (error) {
+                console.error('Restore error:', error);
+                errorElement.textContent = currentLanguage === 'en' 
+                    ? 'Error reading backup file. Please check the file and try again.' 
+                    : 'バックアップファイルの読み込みエラー。ファイルを確認してください。';
+                errorElement.classList.remove('hidden');
+            }
         }
 
         // Initialize on load
